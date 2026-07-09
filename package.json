@@ -1,0 +1,36 @@
+{
+  "name": "openclerk-gdocs",
+  "version": "0.1.0",
+  "description": "OpenClerk for Google Docs — Bluebook citation checking and citation lookups via a Google Workspace Add-on, built on openclerk-core.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/OpenClerkProject/openclerk-gdocs.git"
+  },
+  "scripts": {
+    "build": "node scripts/build.js",
+    "watch": "node scripts/build.js --watch",
+    "push": "npm run build && clasp push",
+    "test": "jest",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "openclerk-core": "github:OpenClerkProject/openclerk-core#v0.1.0"
+  },
+  "devDependencies": {
+    "@google/clasp": "^2.4.2",
+    "@types/google-apps-script": "^1.0.83",
+    "@types/jest": "^29.0.0",
+    "esbuild": "^0.23.0",
+    "jest": "^29.0.0",
+    "ts-jest": "^29.0.0",
+    "typescript": "^5.4.2"
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node",
+    "testMatch": [
+      "**/tests/**/*.test.ts"
+    ]
+  }
+}

@@ -1,0 +1,352 @@
+<style>
+  body {
+    font-family: Arial, sans-serif;
+    font-size: 13px;
+    margin: 0;
+    padding: 0;
+    color: #202124;
+  }
+  .tabs {
+    display: flex;
+    border-bottom: 1px solid #dadce0;
+  }
+  .tab-button {
+    flex: 1;
+    padding: 10px 4px;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .tab-button.active {
+    border-bottom-color: #1a73e8;
+    font-weight: bold;
+    color: #1a73e8;
+  }
+  .panel {
+    display: none;
+    padding: 12px;
+  }
+  .panel.active {
+    display: block;
+  }
+  label {
+    display: block;
+    margin-top: 10px;
+    margin-bottom: 3px;
+    font-weight: bold;
+  }
+  select,
+  input[type="text"],
+  input[type="password"] {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 5px;
+    border: 1px solid #dadce0;
+    border-radius: 4px;
+  }
+  .helper-text {
+    color: #5f6368;
+    font-size: 11px;
+    margin: 4px 0 0;
+  }
+  button.primary {
+    margin-top: 12px;
+    width: 100%;
+    padding: 8px;
+    background: #1a73e8;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+  }
+  button.primary:disabled {
+    background: #a9c4ea;
+    cursor: default;
+  }
+  #online-lookup-status,
+  #bluebook-status {
+    margin-top: 10px;
+    font-size: 12px;
+    color: #3c4043;
+  }
+  .issue-list {
+    margin-top: 10px;
+  }
+  .issue-item {
+    border: 1px solid #e0e0e0;
+    border-radius: 4px;
+    padding: 8px;
+    margin-bottom: 6px;
+    cursor: pointer;
+  }
+  .issue-item:hover {
+    background: #f1f3f4;
+  }
+  .issue-citation {
+    font-weight: bold;
+    word-break: break-word;
+  }
+  .issue-clean {
+    color: #188038;
+  }
+  .issue-error {
+    color: #d93025;
+  }
+  .issue-warning {
+    color: #b06000;
+  }
+  .issue-message {
+    font-size: 12px;
+    margin: 3px 0 0;
+  }
+</style>
+
+<div class="tabs">
+  <button class="tab-button active" id="tab-online-lookup" onclick="setActiveTab('online-lookup')">Online Lookup</button>
+  <button class="tab-button" id="tab-bluebook-check" onclick="setActiveTab('bluebook-check')">Bluebook Check</button>
+</div>
+
+<div class="panel active" id="panel-online-lookup">
+  <label for="provider-select">Lookup provider</label>
+  <select id="provider-select" onchange="renderCredentialFields()"></select>
+  <p class="helper-text" id="provider-description"></p>
+
+  <div id="credential-fields"></div>
+
+  <button class="primary" id="lookup-button" onclick="runLookup()">Scan &amp; hyperlink</button>
+  <p id="online-lookup-status"></p>
+</div>
+
+<div class="panel" id="panel-bluebook-check">
+  <label for="edition-select">Bluebook edition</label>
+  <select id="edition-select" onchange="renderEditionDescription()"></select>
+  <p class="helper-text" id="edition-description"></p>
+
+  <button class="primary" id="bluebook-button" onclick="runBluebookCheck()">Check citations</button>
+  <p id="bluebook-status"></p>
+  <div class="issue-list" id="bluebook-results"></div>
+</div>
+
+<script>
+  var providers = [];
+  var editions = [];
+
+  function setActiveTab(tabName) {
+    ["online-lookup", "bluebook-check"].forEach(function (name) {
+      document.getElementById("tab-" + name).classList.toggle("active", name === tabName);
+      document.getElementById("panel-" + name).classList.toggle("active", name === tabName);
+    });
+  }
+
+  // ---- Online Lookup ----
+
+  function populateProviders(list) {
+    providers = list;
+    var select = document.getElementById("provider-select");
+    select.innerHTML = "";
+    providers.forEach(function (provider) {
+      var option = document.createElement("option");
+      option.value = provider.id;
+      option.textContent = provider.name;
+      select.appendChild(option);
+    });
+    renderCredentialFields();
+  }
+
+  function getSelectedProvider() {
+    var id = document.getElementById("provider-select").value;
+    return providers.filter(function (provider) {
+      return provider.id === id;
+    })[0];
+  }
+
+  function renderCredentialFields() {
+    var provider = getSelectedProvider();
+    var container = document.getElementById("credential-fields");
+    var descriptionEl = document.getElementById("provider-description");
+    container.innerHTML = "";
+    descriptionEl.textContent = provider ? provider.description : "";
+
+    if (!provider) {
+      return;
+    }
+
+    provider.credentialFields.forEach(function (field) {
+      var label = document.createElement("label");
+      label.textContent = field.label;
+      label.setAttribute("for", "cred-" + field.key);
+      container.appendChild(label);
+
+      var input = document.createElement("input");
+      input.type = field.type === "password" ? "password" : "text";
+      input.id = "cred-" + field.key;
+      input.placeholder = field.placeholder || "";
+      container.appendChild(input);
+    });
+  }
+
+  function collectCredentials(provider) {
+    var credentials = {};
+    provider.credentialFields.forEach(function (field) {
+      var input = document.getElementById("cred-" + field.key);
+      credentials[field.key] = input ? input.value.trim() : "";
+    });
+    return credentials;
+  }
+
+  function runLookup() {
+    var provider = getSelectedProvider();
+    if (!provider) {
+      return;
+    }
+
+    var credentials = collectCredentials(provider);
+    var missing = provider.credentialFields.filter(function (field) {
+      return field.required !== false && !credentials[field.key];
+    });
+    if (missing.length > 0) {
+      document.getElementById("online-lookup-status").textContent =
+        "Fill in: " + missing.map(function (f) { return f.label; }).join(", ");
+      return;
+    }
+
+    var button = document.getElementById("lookup-button");
+    button.disabled = true;
+    document.getElementById("online-lookup-status").textContent =
+      "Scanning the document for citations to look up via " + provider.name + "...";
+
+    google.script.run
+      .withSuccessHandler(function (result) {
+        button.disabled = false;
+        onLookupResult(result);
+      })
+      .withFailureHandler(function (error) {
+        button.disabled = false;
+        document.getElementById("online-lookup-status").textContent = "Unable to complete the lookup: " + error.message;
+      })
+      .runOnlineLookup(provider.id, credentials);
+  }
+
+  function onLookupResult(result) {
+    var statusEl = document.getElementById("online-lookup-status");
+    if (!result.ok) {
+      statusEl.textContent = result.error || "Lookup failed.";
+      return;
+    }
+    if (result.totalCitations === 0) {
+      statusEl.textContent = "No case citations were found in the current document.";
+      return;
+    }
+
+    var rateLimitNote =
+      result.rateLimitedCount > 0
+        ? " " + result.rateLimitedCount + " were rate-limited by " + result.providerName + " -- wait a minute and scan again."
+        : "";
+    statusEl.textContent =
+      "Linked " + result.linkedCount + " of " + result.totalCitations + " citation(s) via " + result.providerName + ". " +
+      result.skippedCount + " could not be resolved and were left unchanged." + rateLimitNote;
+  }
+
+  // ---- Bluebook Check ----
+
+  function populateEditions(list) {
+    editions = list;
+    var select = document.getElementById("edition-select");
+    select.innerHTML = "";
+    editions.forEach(function (edition) {
+      var option = document.createElement("option");
+      option.value = edition.id;
+      option.textContent = edition.name;
+      select.appendChild(option);
+    });
+    renderEditionDescription();
+  }
+
+  function renderEditionDescription() {
+    var id = document.getElementById("edition-select").value;
+    var edition = editions.filter(function (e) {
+      return e.id === id;
+    })[0];
+    document.getElementById("edition-description").textContent = edition ? edition.description : "";
+  }
+
+  function runBluebookCheck() {
+    var editionId = document.getElementById("edition-select").value;
+    var button = document.getElementById("bluebook-button");
+    button.disabled = true;
+    document.getElementById("bluebook-status").textContent = "Checking citations...";
+    document.getElementById("bluebook-results").innerHTML = "";
+
+    google.script.run
+      .withSuccessHandler(function (result) {
+        button.disabled = false;
+        onBluebookResult(result);
+      })
+      .withFailureHandler(function (error) {
+        button.disabled = false;
+        document.getElementById("bluebook-status").textContent = "Unable to check citations: " + error.message;
+      })
+      .runBluebookCheck(editionId);
+  }
+
+  function onBluebookResult(result) {
+    var statusEl = document.getElementById("bluebook-status");
+    var listEl = document.getElementById("bluebook-results");
+    listEl.innerHTML = "";
+
+    if (!result.ok) {
+      statusEl.textContent = result.error || "Bluebook check failed.";
+      return;
+    }
+    if (result.totalCitations === 0) {
+      statusEl.textContent = "No case citations were found in the current document.";
+      return;
+    }
+
+    statusEl.textContent =
+      "Checked " + result.totalCitations + " citation(s) against the " + result.editionName + "; " +
+      result.flaggedCount + " flagged (" + result.errorCount + " error(s), " + result.warningCount + " warning(s)).";
+
+    result.results.forEach(function (item) {
+      var div = document.createElement("div");
+      div.className = "issue-item";
+      div.onclick = function () {
+        google.script.run.goToCitationInDocument(item.raw);
+      };
+
+      var citationEl = document.createElement("p");
+      citationEl.className = "issue-citation";
+      citationEl.textContent = item.raw;
+      div.appendChild(citationEl);
+
+      if (item.parseFailed) {
+        var parseFailedEl = document.createElement("p");
+        parseFailedEl.className = "issue-message issue-warning";
+        parseFailedEl.textContent = "Could not be parsed as a case citation.";
+        div.appendChild(parseFailedEl);
+      } else if (item.issues.length === 0) {
+        var cleanEl = document.createElement("p");
+        cleanEl.className = "issue-message issue-clean";
+        cleanEl.textContent = "No obvious mechanical problems.";
+        div.appendChild(cleanEl);
+      } else {
+        item.issues.forEach(function (issue) {
+          var issueEl = document.createElement("p");
+          issueEl.className = "issue-message issue-" + issue.severity;
+          issueEl.textContent = issue.message;
+          div.appendChild(issueEl);
+        });
+      }
+
+      listEl.appendChild(div);
+    });
+  }
+
+  // ---- Init ----
+
+  google.script.run.withSuccessHandler(populateProviders).getProviderList();
+  google.script.run.withSuccessHandler(populateEditions).getBluebookEditionList();
+</script>
