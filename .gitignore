@@ -3,4 +3,5 @@ build
 dist
 coverage
 .clasp.json
+.clasprc.json
 *.log

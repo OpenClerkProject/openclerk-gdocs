@@ -18,7 +18,7 @@
     "openclerk-core": "github:OpenClerkProject/openclerk-core#v0.1.0"
   },
   "devDependencies": {
-    "@google/clasp": "^2.4.2",
+    "@google/clasp": "^3.3.0",
     "@types/google-apps-script": "^1.0.83",
     "@types/jest": "^29.0.0",
     "esbuild": "^0.23.0",
