@@ -117,7 +117,7 @@
   <div id="credential-fields"></div>
 
   <button class="primary" id="lookup-button" onclick="runLookup()">Scan &amp; hyperlink</button>
-  <p id="online-lookup-status"></p>
+  <p id="online-lookup-status" aria-live="polite"></p>
 </div>
 
 <div class="panel" id="panel-bluebook-check">
@@ -126,8 +126,8 @@
   <p class="helper-text" id="edition-description"></p>
 
   <button class="primary" id="bluebook-button" onclick="runBluebookCheck()">Check citations</button>
-  <p id="bluebook-status"></p>
-  <div class="issue-list" id="bluebook-results"></div>
+  <p id="bluebook-status" aria-live="polite"></p>
+  <div class="issue-list" id="bluebook-results" aria-live="polite"></div>
 </div>
 
 <script>
