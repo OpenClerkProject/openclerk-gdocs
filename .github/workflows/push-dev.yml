@@ -1,0 +1,36 @@
+name: Push to Apps Script (dev)
+
+# Keeps the "OpenClerk (dev)" Apps Script project's HEAD deployment in sync with main, so the
+# sidebar picks up the latest code on the next page reload without a manual `npm run push`.
+# Needs two repo secrets, both produced by a one-time manual `npx clasp login` + `clasp create`
+# (see README.md > Development) -- see that section for exactly what to paste into each:
+#   CLASPRC_JSON -- the OAuth credential clasp writes to ~/.clasprc.json after `clasp login`
+#   CLASP_JSON   -- the target project file clasp writes to .clasp.json after `clasp create`
+# clasp login's refresh token can expire; if this workflow starts failing with an auth error,
+# re-run `clasp login` locally and update the CLASPRC_JSON secret with the new contents.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  push:
+    name: Push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Configure clasp credentials
+        run: |
+          echo '${{ secrets.CLASPRC_JSON }}' > ~/.clasprc.json
+          echo '${{ secrets.CLASP_JSON }}' > .clasp.json
+      # --force: CI can't answer clasp's interactive "overwrite untracked changes?" prompt, so this
+      # always wins over anything edited directly in the Apps Script web IDE -- treat main as the
+      # only source of truth for this deployment, don't hand-edit code there.
+      - run: npx clasp push --force
