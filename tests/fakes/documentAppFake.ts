@@ -4,12 +4,28 @@
  * hyperlinkOccurrences, getOccurrenceStatus, and navigateToText with real assertions instead of
  * requiring a live Google Doc for every test.
  *
- * One deliberate fidelity choice: the real Body#findText() never matches text spanning two
- * different Text elements (Google Docs splits body content into Text runs at formatting/edit
- * boundaries, and a search never crosses that boundary). This fake models the body as an ordered
- * list of independent Text elements for exactly that reason -- it's a real, documented gotcha
- * worth having a test lock in, not an implementation shortcut.
+ * Models two distinct search surfaces, matching the real API's two distinct behaviors:
+ *  - Body#findText() matches independently against each underlying Text element and never finds
+ *    a match spanning two of them (Google Docs splits body content into Text runs at
+ *    formatting/edit boundaries) -- modeled here as FakeBody's own findText, still exposed
+ *    directly for tests that want to document that raw behavior.
+ *  - Body#editAsText() returns a flattened Text view of the whole body that treats it as one
+ *    continuous string, crossing those boundaries -- modeled as FakeBody.editAsText(), which docs.ts
+ *    actually uses for exactly that reason. The flattened view is cached per FakeBody so repeated
+ *    editAsText() calls within a test observe links set by earlier ones, matching how the real API
+ *    always reflects the same underlying document regardless of how many times you ask for a view
+ *    into it.
  */
+
+function findInString(content: string, pattern: string, fromOffset: number): { start: number; end: number } | null {
+  const regex = new RegExp(pattern);
+  const match = regex.exec(content.slice(fromOffset));
+  if (!match || match[0].length === 0) {
+    return null;
+  }
+  const start = fromOffset + match.index;
+  return { start, end: start + match[0].length - 1 };
+}
 
 class FakeText {
   content: string;
@@ -32,6 +48,12 @@ class FakeText {
     for (let i = startOffset; i <= endOffsetInclusive; i++) {
       this.links[i] = url;
     }
+  }
+
+  findText(pattern: string, from?: FakeRangeElement): FakeRangeElement | null {
+    const fromOffset = from ? from.getEndOffsetInclusive() + 1 : 0;
+    const match = findInString(this.content, pattern, fromOffset);
+    return match ? new FakeRangeElement(this, match.start, match.end) : null;
   }
 }
 
@@ -56,12 +78,15 @@ class FakeRangeElement {
 }
 
 class FakeBody {
+  private flattened: FakeText | null = null;
+
   constructor(private readonly texts: FakeText[]) {}
 
   getText(): string {
     return this.texts.map((t) => t.content).join("");
   }
 
+  /** Models Body#findText()'s real limitation: never matches across Text-element boundaries. */
   findText(pattern: string, from?: FakeRangeElement): FakeRangeElement | null {
     const regex = new RegExp(pattern);
     const startElementIndex = from ? this.texts.indexOf(from.getElement()) : 0;
@@ -78,6 +103,15 @@ class FakeBody {
       }
     }
     return null;
+  }
+
+  /** Models Body#editAsText(): a flattened view crossing Text-element boundaries. Cached so
+   * repeated calls see the same links. */
+  editAsText(): FakeText {
+    if (!this.flattened) {
+      this.flattened = new FakeText(this.getText());
+    }
+    return this.flattened;
   }
 }
 

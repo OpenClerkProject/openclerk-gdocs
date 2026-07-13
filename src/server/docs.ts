@@ -9,6 +9,17 @@
  * metacharacters -- periods, parentheses, e.g. "444 U.S. 490 (U.S.Ill., 1980)" -- so every search
  * string must be escaped before being handed to findText(), or it will both mismatch and can
  * throw on unbalanced-paren citation fragments.
+ *
+ * A second wrinkle, easy to miss: Body#findText() matches the search pattern independently
+ * against each underlying Text element, and Google Docs splits body content into a new Text
+ * element at every formatting boundary -- so it silently fails to find a citation whose
+ * underlying text spans two elements, which is common in practice since Bluebook citations
+ * conventionally italicize the case name (e.g. the "Norfolk & W. Ry. Co. v. Liepelt" portion of a
+ * citation is its own Text element, distinct from the plain-text reporter/volume/page that
+ * follows it) -- exactly the boundary a real citation is likely to land on. Body#editAsText()
+ * returns a flattened Text view of the whole body that findText() (and setLinkUrl/getLinkUrl on
+ * results from it) treats as one continuous string, crossing those boundaries transparently, so
+ * every search in this file goes through that instead of the raw Body.
  */
 
 // Defensive cap mirroring openclerk-word's MAX_SEARCH_TEXT_LENGTH -- a citation string should
@@ -26,14 +37,14 @@ interface Occurrence {
   end: number;
 }
 
-function findAllOccurrences(body: GoogleAppsScript.Document.Body, searchText: string): Occurrence[] {
+function findAllOccurrences(flattenedBody: GoogleAppsScript.Document.Text, searchText: string): Occurrence[] {
   if (!searchText || searchText.length > MAX_SEARCH_TEXT_LENGTH) {
     return [];
   }
 
   const pattern = escapeForFindText(searchText);
   const occurrences: Occurrence[] = [];
-  let result = body.findText(pattern);
+  let result = flattenedBody.findText(pattern);
 
   while (result !== null) {
     occurrences.push({
@@ -41,7 +52,7 @@ function findAllOccurrences(body: GoogleAppsScript.Document.Body, searchText: st
       start: result.getStartOffset(),
       end: result.getEndOffsetInclusive(),
     });
-    result = body.findText(pattern, result);
+    result = flattenedBody.findText(pattern, result);
   }
 
   return occurrences;
@@ -63,8 +74,8 @@ export function getBodyText(): string {
  * re-verifying citations that are already done.
  */
 export function hyperlinkOccurrences(searchText: string, url: string): { linkedCount: number; found: boolean } {
-  const body = DocumentApp.getActiveDocument().getBody();
-  const occurrences = findAllOccurrences(body, searchText);
+  const flattenedBody = DocumentApp.getActiveDocument().getBody().editAsText();
+  const occurrences = findAllOccurrences(flattenedBody, searchText);
   if (occurrences.length === 0) {
     return { linkedCount: 0, found: false };
   }
@@ -89,8 +100,8 @@ export function hyperlinkOccurrences(searchText: string, url: string): { linkedC
  * hyperlinkOccurrences's doc comment for why that matters against tight provider rate limits).
  */
 export function getOccurrenceStatus(searchText: string): { found: boolean; allLinked: boolean } {
-  const body = DocumentApp.getActiveDocument().getBody();
-  const occurrences = findAllOccurrences(body, searchText);
+  const flattenedBody = DocumentApp.getActiveDocument().getBody().editAsText();
+  const occurrences = findAllOccurrences(flattenedBody, searchText);
   return {
     found: occurrences.length > 0,
     allLinked: occurrences.length > 0 && occurrences.every(isAlreadyLinked),
@@ -100,8 +111,8 @@ export function getOccurrenceStatus(searchText: string): { found: boolean; allLi
 /** Moves the document's cursor to the first occurrence of `searchText`, "jumping to" it for the user. */
 export function navigateToText(searchText: string): boolean {
   const doc = DocumentApp.getActiveDocument();
-  const body = doc.getBody();
-  const occurrences = findAllOccurrences(body, searchText);
+  const flattenedBody = doc.getBody().editAsText();
+  const occurrences = findAllOccurrences(flattenedBody, searchText);
   if (occurrences.length === 0) {
     return false;
   }
