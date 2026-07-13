@@ -77,7 +77,7 @@ Prerequisites: Node.js 20+, npm, and a Google account to create an Apps Script p
 
 ```bash
 npm install
-npm test          # jest — shims and the escapeForFindText helper
+npm test          # jest — shims, docs.ts against the DocumentApp fake, escapeForFindText
 npm run lint       # tsc --noEmit
 npm run build      # bundles src/ -> dist/Code.js, copies appsscript.json + sidebar.html
 ```
@@ -95,11 +95,19 @@ add-on's custom menu) to open the sidebar.
 
 ## Testing limitations
 
-Only pure logic is unit-tested (`src/server/shims/`, `escapeForFindText`) — the rest of
-`docs.ts` is a thin wrapper around `DocumentApp`'s live document object model, which has no
-practical fake short of reimplementing Google's own document model. Verifying the
-`DocumentApp`-facing code (search, hyperlinking, cursor navigation) requires exercising it
-against a real Google Doc via `clasp push`.
+`tests/fakes/documentAppFake.ts` is a small in-memory model of the specific `DocumentApp` surface
+`docs.ts` actually calls (`Body#findText`, `Text#getLinkUrl`/`setLinkUrl`, cursor positioning) —
+not a reimplementation of Google's document model, just enough to exercise
+`hyperlinkOccurrences`/`getOccurrenceStatus`/`navigateToText` with real assertions instead of
+skipping them for lack of a live Doc. It models the body as an ordered list of independent Text
+elements specifically to capture a real API gotcha: `findText()` never matches text spanning two
+different Text elements (Google Docs splits body content into runs at formatting/edit
+boundaries), which `tests/docs.test.ts` locks in as a test case rather than an assumption.
+
+What the fake *doesn't* cover: anything about how Google actually splits real document content
+into Text elements in practice, `HtmlService` sidebar behavior, or `google.script.run`'s
+client/server bridge. Those still require exercising the add-in against a real Google Doc via
+`clasp push`.
 
 ## License
 

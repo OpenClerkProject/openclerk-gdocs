@@ -1,10 +1,12 @@
-import { escapeForFindText } from "../src/server/docs";
+import { escapeForFindText, hyperlinkOccurrences, getOccurrenceStatus, navigateToText, getBodyText } from "../src/server/docs";
+import { createFakeDocumentApp } from "./fakes/documentAppFake";
 
-// escapeForFindText is the only piece of docs.ts that's practical to unit test in isolation --
-// everything else is a thin wrapper around DocumentApp's live document object model, which has
-// no meaningful fake short of reimplementing Google's own document model. What matters here is
-// that citation text (routinely containing regex metacharacters) round-trips through
-// Body#findText(), which treats its argument as a regular expression rather than literal text.
+// escapeForFindText's own unit tests -- see fakes/documentAppFake.ts for the rest of this file,
+// which exercises hyperlinkOccurrences/getOccurrenceStatus/navigateToText against a small
+// in-memory DocumentApp fake rather than skipping them for lack of a live Google Doc. What
+// matters here is that citation text (routinely containing regex metacharacters) round-trips
+// through Body#findText(), which treats its argument as a regular expression rather than literal
+// text.
 describe("escapeForFindText", () => {
   it("escapes periods so they don't match any character", () => {
     expect(escapeForFindText("444 U.S. 490")).toBe("444 U\\.S\\. 490");
@@ -22,5 +24,125 @@ describe("escapeForFindText", () => {
 
   it("leaves ordinary text untouched", () => {
     expect(escapeForFindText("Norfolk and W Ry Co v Liepelt")).toBe("Norfolk and W Ry Co v Liepelt");
+  });
+});
+
+const CITATION = "444 U.S. 490 (U.S.Ill., 1980)";
+
+function installFakeDocument(paragraphs: string[]) {
+  const fake = createFakeDocumentApp(paragraphs);
+  (globalThis as unknown as { DocumentApp: unknown }).DocumentApp = fake;
+  return fake;
+}
+
+describe("hyperlinkOccurrences", () => {
+  it("hyperlinks a single not-yet-linked occurrence", () => {
+    installFakeDocument([`See ${CITATION} for the holding.`]);
+    const result = hyperlinkOccurrences(CITATION, "https://example.com/case");
+    expect(result).toEqual({ linkedCount: 1, found: true });
+    expect(getOccurrenceStatus(CITATION)).toEqual({ found: true, allLinked: true });
+  });
+
+  it("counts an already-linked occurrence without re-setting it", () => {
+    const fake = installFakeDocument([`${CITATION} and ${CITATION} again.`]);
+    hyperlinkOccurrences(CITATION, "https://example.com/case");
+    const spy = jest.spyOn(fake.__texts[0], "setLinkUrl");
+    const result = hyperlinkOccurrences(CITATION, "https://example.com/case");
+    expect(result).toEqual({ linkedCount: 2, found: true });
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("links only the not-yet-linked occurrence when one of two is already linked", () => {
+    const fake = installFakeDocument([`${CITATION} and ${CITATION} again.`]);
+    // Manually link just the first occurrence, simulating a prior partial run (e.g. interrupted
+    // by a provider rate limit) rather than going through hyperlinkOccurrences for setup.
+    const firstMatch = fake.__document.getBody().findText(escapeForFindText(CITATION))!;
+    firstMatch.getElement().setLinkUrl(firstMatch.getStartOffset(), firstMatch.getEndOffsetInclusive(), "https://example.com/case-a");
+
+    const result = hyperlinkOccurrences(CITATION, "https://example.com/case-b");
+    expect(result).toEqual({ linkedCount: 2, found: true });
+    // The already-linked occurrence keeps its original URL; only the second one changes.
+    expect(firstMatch.getElement().getLinkUrl(firstMatch.getStartOffset())).toBe("https://example.com/case-a");
+    const secondMatch = fake.__document.getBody().findText(escapeForFindText(CITATION), firstMatch)!;
+    expect(secondMatch.getElement().getLinkUrl(secondMatch.getStartOffset())).toBe("https://example.com/case-b");
+  });
+
+  it("reports not found when the citation isn't in the document", () => {
+    installFakeDocument(["Nothing relevant here."]);
+    expect(hyperlinkOccurrences(CITATION, "https://example.com/case")).toEqual({
+      linkedCount: 0,
+      found: false,
+    });
+  });
+
+  it("does not match a citation split across two Text elements", () => {
+    // Real Body#findText() never matches across Text-element boundaries (Google Docs splits body
+    // content into runs at formatting/edit boundaries) -- this locks that behavior in rather than
+    // silently relying on it.
+    const half = CITATION.length / 2;
+    installFakeDocument([CITATION.slice(0, half), CITATION.slice(half)]);
+    expect(hyperlinkOccurrences(CITATION, "https://example.com/case")).toEqual({
+      linkedCount: 0,
+      found: false,
+    });
+  });
+
+  it("guards against a citation string longer than MAX_SEARCH_TEXT_LENGTH", () => {
+    const huge = "444 U.S. ".repeat(100);
+    installFakeDocument([huge]);
+    expect(hyperlinkOccurrences(huge, "https://example.com/case")).toEqual({
+      linkedCount: 0,
+      found: false,
+    });
+  });
+
+  it("guards against an empty search string", () => {
+    installFakeDocument([CITATION]);
+    expect(hyperlinkOccurrences("", "https://example.com/case")).toEqual({
+      linkedCount: 0,
+      found: false,
+    });
+  });
+});
+
+describe("getOccurrenceStatus", () => {
+  it("reports allLinked: false when only some occurrences are linked", () => {
+    installFakeDocument([`${CITATION} and ${CITATION} again.`]);
+    expect(getOccurrenceStatus(CITATION)).toEqual({ found: true, allLinked: false });
+  });
+
+  it("reports allLinked: true once every occurrence is linked", () => {
+    installFakeDocument([`${CITATION} and ${CITATION} again.`]);
+    hyperlinkOccurrences(CITATION, "https://example.com/case");
+    expect(getOccurrenceStatus(CITATION)).toEqual({ found: true, allLinked: true });
+  });
+
+  it("reports found: false, allLinked: false when absent", () => {
+    installFakeDocument(["Nothing relevant here."]);
+    expect(getOccurrenceStatus(CITATION)).toEqual({ found: false, allLinked: false });
+  });
+});
+
+describe("navigateToText", () => {
+  it("moves the cursor to the first occurrence and returns true", () => {
+    const fake = installFakeDocument([`Intro. ${CITATION} and ${CITATION} again.`]);
+    expect(navigateToText(CITATION)).toBe(true);
+    const cursor = fake.__document.cursor;
+    expect(cursor).not.toBeNull();
+    expect(cursor!.element).toBe(fake.__texts[0]);
+    expect(cursor!.offset).toBe(`Intro. `.length);
+  });
+
+  it("returns false and leaves the cursor untouched when not found", () => {
+    const fake = installFakeDocument(["Nothing relevant here."]);
+    expect(navigateToText(CITATION)).toBe(false);
+    expect(fake.__document.cursor).toBeNull();
+  });
+});
+
+describe("getBodyText", () => {
+  it("concatenates every Text element in order", () => {
+    installFakeDocument(["First paragraph. ", "Second paragraph."]);
+    expect(getBodyText()).toBe("First paragraph. Second paragraph.");
   });
 });
