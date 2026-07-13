@@ -29,9 +29,12 @@ workflows are implemented here for now:
   opens an `HtmlService` sidebar, the closest UX parity to Word's task pane.
 - **`DocumentApp`** for reading the document body and applying hyperlinks (`src/server/docs.ts`),
   the equivalent of openclerk-word's `word.ts`.
-- **`openclerk-core`** is consumed as a git dependency (`openclerk-core: github:OpenClerkProject/openclerk-core#v0.1.0`,
-  not published to npm) for citation parsing, the Bluebook rule-checker, and the citation-lookup
-  provider registry — completely unmodified.
+- **`openclerk-core`** is consumed as a normal npm registry dependency (`openclerk-core: ^0.2.6`)
+  for citation parsing, the Bluebook rule-checker, and the citation-lookup provider registry —
+  completely unmodified. (Earlier versions pinned it as a git dependency instead; abandoned
+  because installing a git dependency requires its `prepare` script to run at install time on
+  *this* machine, which some npm setups block behind an `allowScripts` allowlist that a fresh git
+  dependency can't satisfy due to a known npm/cli bug. Registry installs don't have this problem.)
 - **Bundling**: Apps Script's V8 runtime has no `require`/ES module loader at runtime, so
   `scripts/build.js` uses esbuild to bundle everything into a single `dist/Code.js`, then
   explicitly assigns the handful of entry points (`onOpen`, `showSidebar`,

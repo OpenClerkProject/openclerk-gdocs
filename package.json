@@ -15,7 +15,7 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "openclerk-core": "github:OpenClerkProject/openclerk-core#v0.1.0"
+    "openclerk-core": "^0.2.6"
   },
   "devDependencies": {
     "@google/clasp": "^3.3.0",
