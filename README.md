@@ -108,6 +108,12 @@ npm run push       # builds, then clasp push
 Open the bound Doc, reload it, and use **Extensions → OpenClerk → Open OpenClerk** (or the
 add-on's custom menu) to open the sidebar.
 
+[`tests/manual/test-document.md`](tests/manual/test-document.md) has a ready-to-paste block of
+citations (each one verified against the actual parsing/rule-checking logic beforehand, not
+guessed) covering both tabs and the edge cases most worth checking by hand -- an already-fabricated
+citation, an edition-gated abbreviation, and a citation you deliberately italicize to test that
+searches still find text spanning a Text-element boundary.
+
 ## Testing limitations
 
 `tests/fakes/documentAppFake.ts` is a small in-memory model of the specific `DocumentApp` surface
