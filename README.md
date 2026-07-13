@@ -74,6 +74,18 @@ Docs' `Body#findText()` treats its argument as a regular expression. Citation st
 contain regex metacharacters (`444 U.S. 490 (U.S.Ill., 1980)`), so every search string is escaped
 via `escapeForFindText()` in `src/server/docs.ts` before being handed to `findText()`.
 
+### Searches go through `editAsText()`, not the raw `Body`
+
+`Body#findText()` matches independently against each underlying Text element, and Google Docs
+splits body content into a new Text element at every formatting boundary -- so it silently fails
+to find a citation whose text spans two elements. That's common in practice, not just a
+theoretical edge case: Bluebook citations conventionally italicize the case name, which is exactly
+the kind of formatting change that creates an element boundary right in the middle of a citation.
+`docs.ts` searches via `Body#editAsText()` instead, which returns a flattened `Text` view treating
+the whole body as one continuous string -- `findText()`/`getLinkUrl()`/`setLinkUrl()` on results
+from it cross those boundaries transparently. `tests/docs.test.ts` has a regression test for this
+using a citation deliberately split across two Text elements in `tests/fakes/documentAppFake.ts`.
+
 ## Development
 
 Prerequisites: Node.js 20+, npm, and a Google account to create an Apps Script project against.
