@@ -101,12 +101,28 @@ To deploy to an Apps Script project for manual testing in a real Google Doc:
 
 ```bash
 npx clasp login
-npx clasp create --type docs --title "OpenClerk (dev)"   # or: cp .clasp.json.example .clasp.json and fill in an existing project ID
+npx clasp create --type docs --title "OpenClerk (dev)" --rootDir dist   # or: cp .clasp.json.example .clasp.json and fill in an existing project ID
 npm run push       # builds, then clasp push
 ```
 
 Open the bound Doc, reload it, and use **Extensions → OpenClerk → Open OpenClerk** (or the
 add-on's custom menu) to open the sidebar.
+
+### Keeping the dev deployment in sync automatically
+
+`.github/workflows/push-dev.yml` runs `clasp push` against the same "OpenClerk (dev)" project on
+every push to `main`, so the sidebar has the latest code on the next reload without a manual `npm
+run push`. It needs two repo secrets (Settings -> Secrets and variables -> Actions), both produced
+by the manual steps above:
+
+- **`CLASPRC_JSON`** -- the contents of `~/.clasprc.json`, written by `clasp login`
+- **`CLASP_JSON`** -- the contents of `.clasp.json`, written by `clasp create` (or your own copy of
+  `.clasp.json.example`)
+
+`clasp login`'s refresh token can expire; if the workflow starts failing with an auth error,
+re-run `clasp login` locally and update the `CLASPRC_JSON` secret with the new file contents. Once
+this is set up, avoid hand-editing code directly in the Apps Script web IDE -- the workflow force-
+pushes on every merge, so `main` is the only thing that actually sticks.
 
 [`tests/manual/test-document.md`](tests/manual/test-document.md) has a ready-to-paste block of
 citations (each one verified against the actual parsing/rule-checking logic beforehand, not
