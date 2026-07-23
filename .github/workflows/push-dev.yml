@@ -14,23 +14,37 @@ on:
     branches: [main]
   workflow_dispatch: {}
 
+# Least privilege: this job only reads the repo and then authenticates to Apps Script with its own
+# clasp OAuth secret. It never needs to write back to the repo, so the default GITHUB_TOKEN is
+# narrowed to read-only.
+permissions:
+  contents: read
+
 jobs:
   push:
     name: Push
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm
       - run: npm ci
       - run: npm run build
       - name: Configure clasp credentials
+        # Pass the secrets through the environment and write them with printf, rather than
+        # interpolating `${{ secrets.* }}` straight into the shell command. Interpolation expands the
+        # secret onto the command line before the shell runs, so a value containing a quote or shell
+        # metacharacter could break quoting or inject a command; an env var + printf '%s' writes the
+        # exact bytes with no shell parsing of the contents.
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+          CLASP_JSON: ${{ secrets.CLASP_JSON }}
         run: |
-          echo '${{ secrets.CLASPRC_JSON }}' > ~/.clasprc.json
-          echo '${{ secrets.CLASP_JSON }}' > .clasp.json
+          printf '%s' "$CLASPRC_JSON" > ~/.clasprc.json
+          printf '%s' "$CLASP_JSON" > .clasp.json
       # --force: CI can't answer clasp's interactive "overwrite untracked changes?" prompt, so this
       # always wins over anything edited directly in the Apps Script web IDE -- treat main as the
-      # only source of truth for this deployment, don't hand-edit code there.
+      # only source of truth for this (dev) deployment, don't hand-edit code there.
       - run: npx clasp push --force
